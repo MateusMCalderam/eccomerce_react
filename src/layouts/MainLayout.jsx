@@ -1,15 +1,28 @@
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { isAuthenticated, logout } from '../services/auth.js'
-import { useCart } from '../services/cartContext.jsx'
 
 export default function MainLayout() {
   const navigate = useNavigate()
   const [auth, setAuth] = useState(isAuthenticated())
-  const { totalItems } = useCart()
+  const getLocalCart = () => {
+    try {
+      const raw = localStorage.getItem('cart')
+      if (!raw) return []
+      return JSON.parse(raw)
+    } catch {
+      return []
+    }
+  }
+
+  const [totalItems, setTotalItems] = useState(() => getLocalCart().reduce((s, i) => s + (i.quantity || 0), 0))
 
   useEffect(() => {
-    const onStorage = () => setAuth(isAuthenticated())
+    const onStorage = () => {
+  setAuth(isAuthenticated())
+  const items = getLocalCart()
+  setTotalItems(items.reduce((s, i) => s + (i.quantity || 0), 0))
+    }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])

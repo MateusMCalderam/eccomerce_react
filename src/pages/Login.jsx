@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../services/auth.js'
-import { useCart } from '../services/cartContext.jsx'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { migrateGuestToUser } = useCart()
   const [username, setUsername] = useState('mor_2314')
   const [password, setPassword] = useState('83r5^_')
   const [loading, setLoading] = useState(false)
@@ -17,7 +15,6 @@ export default function Login() {
     setError('')
     try {
       await login({ username, password })
-      migrateGuestToUser()
       navigate('/produtos')
     } catch (err) {
       setError('Falha no login')

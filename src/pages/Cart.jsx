@@ -1,28 +1,121 @@
-import { useEffect } from 'react'
-import { useCart } from '../services/cartContext.jsx'
+import { useEffect, useMemo, useState } from 'react'
+import api from '../services/api.js'
+import { isAuthenticated } from '../services/auth.js'
+
+function readCart() {
+  try {
+    const raw = localStorage.getItem('cart')
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function writeCart(items) {
+  localStorage.setItem('cart', JSON.stringify(items))
+  window.dispatchEvent(new Event('storage'))
+}
+
+function setQuantity(productId, quantity) {
+  const items = readCart().map((i) => (i.product.id === productId ? { ...i, quantity: Math.max(1, quantity) } : i))
+  writeCart(items)
+}
+
+function removeItem(productId) {
+  const items = readCart().filter((i) => i.product.id !== productId)
+  writeCart(items)
+}
+
+function clearCart() {
+  writeCart([])
+}
 
 export default function Cart() {
-  const { items, loading, setQuantity, removeItem, clearCart, subtotal, fetchCart } = useCart()
+  const [items, setItems] = useState(() => readCart())
+  const [loading, setLoading] = useState(false)
+
+  // when authenticated, load cart from API
+  useEffect(() => {
+    let mounted = true
+    async function loadFromApi() {
+      if (!isAuthenticated()) return
+      setLoading(true)
+      try {
+        // Assumption: using demo userId=1; API returns array of carts for user
+        const { data: carts } = await api.get('/carts/user/1')
+        if (!Array.isArray(carts) || carts.length === 0) return
+        const latest = carts[carts.length - 1]
+        const proms = (latest.products || []).map(async (p) => {
+          const { data: product } = await api.get(`/products/${p.productId}`)
+          return { product, quantity: p.quantity }
+        })
+        const resolved = await Promise.all(proms)
+        if (!mounted) return
+        setItems(resolved)
+      } catch (e) {
+        console.error('cart fetch error', e)
+      } finally {
+        mounted && setLoading(false)
+      }
+    }
+    loadFromApi()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   useEffect(() => {
-    fetchCart()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const onStorage = () => setItems(readCart())
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   const inc = (productId) => {
     const item = items.find((i) => i.product.id === productId)
     if (!item) return
-    setQuantity(productId, item.quantity + 1)
+  const next = items.map((it) => (it.product.id === productId ? { ...it, quantity: it.quantity + 1 } : it))
+  setItems(next)
+  if (isAuthenticated()) persistCartToApi(next)
+  else setQuantity(productId, item.quantity + 1)
   }
 
   const dec = (productId) => {
     const item = items.find((i) => i.product.id === productId)
     if (!item) return
-    setQuantity(productId, Math.max(1, item.quantity - 1))
+  const next = items.map((it) => (it.product.id === productId ? { ...it, quantity: Math.max(1, it.quantity - 1) } : it))
+  setItems(next)
+  if (isAuthenticated()) persistCartToApi(next)
+  else setQuantity(productId, Math.max(1, item.quantity - 1))
   }
 
-  const removeLine = (productId) => removeItem(productId)
-  const clearAll = () => clearCart()
+  const removeLine = (productId) => {
+    const next = items.filter((i) => i.product.id !== productId)
+    setItems(next)
+    if (isAuthenticated()) persistCartToApi(next)
+    else removeItem(productId)
+  }
+  const clearAll = () => {
+    setItems([])
+    if (isAuthenticated()) persistCartToApi([])
+    else clearCart()
+  }
+
+  // persist to API by creating a new cart (demo API). This is best-effort.
+  async function persistCartToApi(itemsToPersist) {
+    try {
+      const payload = {
+        userId: 1,
+        date: new Date().toISOString(),
+        products: itemsToPersist.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+      }
+      await api.post('/carts', payload)
+      // no further action; UI already updated optimistically
+    } catch (e) {
+      console.error('persist cart error', e)
+    }
+  }
+
+  const subtotal = useMemo(() => items.reduce((sum, i) => sum + (i.product?.price || 0) * (i.quantity || 0), 0), [items])
 
   return (
     <div className="container" style={{ padding: '24px 0' }}>
@@ -73,7 +166,7 @@ export default function Cart() {
               <span>Grátis</span>
             </div>
             <div style={{ display: 'grid', gap: 8 }}>
-              <button onClick={() => fetchCart()} style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #111', background: '#111', color: '#fff' }}>Atualizar</button>
+              <button onClick={() => setItems(readCart())} style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #111', background: '#111', color: '#fff' }}>Atualizar</button>
               <button onClick={clearAll} style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #ccc', background: '#fff', color: '#111' }}>Limpar carrinho</button>
             </div>
           </aside>
