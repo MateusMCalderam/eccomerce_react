@@ -3,11 +3,6 @@ import ProductGrid from '../components/ProductGrid.jsx'
 import api from '../services/api.js'
 import { isAuthenticated } from '../services/auth.js'
 
-// NOTE: using API endpoints directly. Assumption: API exposes
-// /products, /products/categories and /products/category/:category
-// and /carts for cart ops. When user is authenticated the cart
-// requests will be sent to API; otherwise we fallback to localStorage.
-
 export default function Products() {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
@@ -45,7 +40,6 @@ export default function Products() {
 
   async function handleAddToCart(product) {
     if (!isAuthenticated()) {
-      // fallback to localStorage if not authenticated
       const stored = localStorage.getItem('cart')
       const cart = stored ? JSON.parse(stored) : []
       const existing = cart.find((it) => it.product.id === product.id)
@@ -58,14 +52,12 @@ export default function Products() {
     }
 
     try {
-      // create a cart with the product. Assumption: userId 1 used by demo API
       await api.post('/carts', {
         userId: 1,
         date: new Date().toISOString(),
         products: [{ productId: product.id, quantity: 1 }],
       })
       alert('Produto adicionado ao carrinho (API)')
-      // trigger storage listeners (other UI may listen)
       window.dispatchEvent(new Event('storage'))
     } catch (e) {
       console.error(e)
@@ -75,7 +67,6 @@ export default function Products() {
 
   return (
     <div>
-      {/* Categorias */}
       <div
         className="container"
         style={{
@@ -121,13 +112,12 @@ export default function Products() {
         ))}
       </div>
 
-      {/* Produtos */}
       {loading ? (
         <div
           className="container"
           style={{ padding: '60px 0', textAlign: 'center', fontSize: 18 }}
         >
-          ⏳ Carregando produtos...
+          Carregando produtos...
         </div>
       ) : (
         <ProductGrid
